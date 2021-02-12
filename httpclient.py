@@ -36,31 +36,71 @@ class HTTPClient(object):
     #def get_host_port(self,url):
 
     def connect(self, host, port):
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.connect((host, port))
-        return None
+        '''
+        This method creates a socket connection to a provided host and port. Return the host if a connection is completed.
+        '''
+        # Set a port if it isn't specified
+        if port == None:
+            port = 80
+        # Try connecting to the host:port
+        try:
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.socket.connect((host, port))
+            print("Connected to %s:%s" % (host,port))
+        # Exit if the connection is not made
+        except:
+            print("Could not connect to %s:%s" % (host,port))
+            sys.exit(1)
+        
+        return host
 
     def get_code(self, data):
-        return None
+        '''
+        This method returns the status code as an integer from the received data.
+        '''
+        return int(data.split()[1])
 
     def get_headers(self,data):
+        '''
+        This method was not used.
+        '''
         return None
 
     def get_body(self, data):
-        return None
+        '''
+        This method splits the body from the received data.
+        '''
+        return data.split("\r\n\r\n")[1]
     
     def sendall(self, data):
-        self.socket.sendall(data.encode('utf-8'))
+        '''
+        This method sends the encoded request to the server.
+        '''
+        try:
+            self.socket.sendall(data.encode('utf-8'))
+        except:
+            print("Unable to send.")
+            sys.exit(1)
         
     def close(self):
+        '''
+        This method closes the socket
+        '''
         self.socket.close()
 
-    # read everything from the socket
     def recvall(self, sock):
+        '''
+        This method receives all data from the provided socket and returns the decoded data.
+        '''
         buffer = bytearray()
         done = False
         while not done:
-            part = sock.recv(1024)
+            try:
+                part = sock.recv(1024)
+            except:
+                print("Unable to receive.")
+                sys.exit(1)
+
             if (part):
                 buffer.extend(part)
             else:
@@ -68,13 +108,75 @@ class HTTPClient(object):
         return buffer.decode('utf-8')
 
     def GET(self, url, args=None):
+        '''
+        This method performs a GET request to the specified url with the arguments provided. Sends the request, receives the returned data and returns an HTTPResponse with the status code and body.
+        '''
         code = 500
         body = ""
+
+        # Parse the provided URL
+        parsed_url = urllib.parse.urlparse(url)
+        # Connect to the host:port
+        host = self.connect(parsed_url.hostname, parsed_url.port)
+        # Get the path specified from the URL
+        path = parsed_url.path
+        # If no path is set, use a the root path
+        if path == "":
+            path = "/"
+
+        # Send a GET request through the open connection with the path and host specified
+        self.sendall(f"""GET {path} HTTP/1.1\r\nHost: {host}\r\nAccept-Charset: utf-8\r\nConnection: close\r\n\r\n""")
+        # Receive all data returned from the socket
+        data = self.recvall(self.socket)
+        # Get the status code from the received data
+        code = self.get_code(data)
+        # Get the body from the received data
+        body = self.get_body(data)
+        # Close the connection
+        self.close()
+
+        # Output the status code
+        print(f"Status: {code}")
+        # Output the body
+        print(f"Body:\n{body}")
+
         return HTTPResponse(code, body)
 
     def POST(self, url, args=None):
+        '''
+        This method performs a POST request to the specified url with the arguments provided. Sends the request, receives the returned data and returns an HTTPResponse with the status code and body.
+        '''
         code = 500
         body = ""
+
+        # Parse the provided url
+        parsed_url = urllib.parse.urlparse(url)
+        # If no argument is provided set the query string to empty or encode the arguments
+        if args == None:
+            query_string = ""
+        else:
+            query_string = urllib.parse.urlencode(args)
+
+        # Connect to the host:port
+        host = self.connect(parsed_url.hostname, parsed_url.port)
+        # Get the path specified from the URL
+        path = parsed_url.path
+        # Send a POST request through the open connection with the path and host specified, along with the query string and string length
+        self.sendall(f"""POST {path} HTTP/1.1\r\nHost: {host}\r\nAccept-Charset: utf-8\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {len(query_string)}\r\nConnection: close\r\n\r\n{query_string}""")
+        # Receive all data returned from the socket
+        data = self.recvall(self.socket)
+        # Get the status code from the received data
+        code = self.get_code(data)
+        # Get the body from the received data
+        body = self.get_body(data)
+        # Close the connection
+        self.close()
+
+        # Output the status code
+        print(f"Status: {code}")
+        # Output the body
+        print(f"Body:\n{body}")
+
         return HTTPResponse(code, body)
 
     def command(self, url, command="GET", args=None):
